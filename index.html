@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DioxusBrain - Knowledge Management</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+    <link rel="stylesheet" href="src/styles.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        obsidian: {
+                            50: '#f7f7f9',
+                            100: '#e3e4e8',
+                            200: '#c5c8d0',
+                            300: '#9fa3b0',
+                            400: '#767b8f',
+                            500: '#5c5f72',
+                            600: '#494b5a',
+                            700: '#3d3f49',
+                            800: '#33353c',
+                            900: '#2c2e33',
+                            950: '#1e1f24',
+                        },
+                        logseq: {
+                            blue: '#2962ff',
+                            green: '#00c853',
+                            orange: '#ff9100',
+                            red: '#ff1744',
+                            purple: '#6200ea',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.2s ease-out',
+                        'slide-in': 'slideIn 0.2s ease-out',
+                        'pulse-subtle': 'pulseSubtle 2s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideIn: {
+                            '0%': { transform: 'translateY(-10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                        pulseSubtle: {
+                            '0%, 100%': { opacity: '1' },
+                            '50%': { opacity: '0.7' },
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body, #main {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            overflow: hidden;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c5c8d0;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #9fa3b0;
+        }
+
+        .dark ::-webkit-scrollbar-thumb {
+            background: #494b5a;
+        }
+
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: #5c5f72;
+        }
+
+        /* Editor styles */
+        .block-editor {
+            outline: none;
+            min-height: 1.5em;
+        }
+
+        .block-editor:empty::before {
+            content: attr(data-placeholder);
+            color: #9fa3b0;
+            pointer-events: none;
+        }
+
+        .dark .block-editor:empty::before {
+            color: #5c5f72;
+        }
+
+        /* Wikilink styles */
+        .wikilink {
+            color: #2962ff;
+            text-decoration: none;
+            border-bottom: 1px dashed #2962ff;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .wikilink:hover {
+            background: rgba(41, 98, 255, 0.1);
+        }
+
+        .wikilink.missing {
+            color: #9fa3b0;
+            border-bottom-style: dashed;
+            border-bottom-color: #9fa3b0;
+        }
+
+        .dark .wikilink.missing {
+            color: #5c5f72;
+            border-bottom-color: #5c5f72;
+        }
+
+        .dark .wikilink {
+            color: #89b4fa;
+            border-bottom-color: #89b4fa;
+        }
+
+        .dark .wikilink:hover {
+            background: rgba(137, 180, 250, 0.15);
+        }
+
+        /* Tag styles */
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            background: rgba(98, 0, 234, 0.1);
+            color: #6200ea;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .tag:hover {
+            background: rgba(98, 0, 234, 0.2);
+        }
+
+        .dark .tag {
+            background: rgba(137, 180, 250, 0.15);
+            color: #89b4fa;
+        }
+
+        .dark .tag:hover {
+            background: rgba(137, 180, 250, 0.25);
+        }
+
+        /* Block handle */
+        .block-handle {
+            opacity: 0;
+            cursor: grab;
+            transition: opacity 0.15s ease;
+        }
+
+        .block-wrapper:hover .block-handle {
+            opacity: 1;
+        }
+
+        .block-handle:active {
+            cursor: grabbing;
+        }
+
+        /* Resizable panels */
+        .resizable {
+            resize: horizontal;
+            overflow: auto;
+            min-width: 200px;
+            max-width: 600px;
+        }
+
+        .resizer {
+            width: 4px;
+            cursor: ew-resize;
+            background: transparent;
+            transition: background 0.15s ease;
+        }
+
+        .resizer:hover, .resizer.active {
+            background: #2962ff;
+        }
+
+        /* Command palette */
+        .command-palette-item {
+            transition: background 0.1s ease;
+        }
+
+        .command-palette-item:hover, .command-palette-item.selected {
+            background: rgba(41, 98, 255, 0.1);
+        }
+
+        .dark .command-palette-item:hover, .dark .command-palette-item.selected {
+            background: rgba(137, 180, 250, 0.15);
+        }
+
+        /* Graph visualization */
+        .graph-node {
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .graph-node:hover {
+            transform: scale(1.2);
+        }
+
+        .graph-link {
+            stroke-opacity: 0.6;
+        }
+
+        /* Animation utilities */
+        .transition-base {
+            transition: all 0.2s ease;
+        }
+
+        /* Focus styles */
+        .focus-ring:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.3);
+        }
+
+        /* Dropdown menu */
+        .dropdown-menu {
+            animation: fadeIn 0.15s ease-out;
+        }
+
+        /* Toast notifications */
+        .toast {
+            animation: slideIn 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-obsidian-50 text-obsidian-900 dark:bg-obsidian-950 dark:text-obsidian-100">
+    <div id="main"></div>
+    <script type="module">
+        import init from './pkg/dioxus_brain.js';
+        init();
+    </script>
+</body>
+</html>
