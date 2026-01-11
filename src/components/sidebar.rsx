@@ -1,36 +1,41 @@
 use dioxus::prelude::*;
-use crate::store::{use_store, AppState, Page, PageFilter, Theme};
-use crate::storage::{use_storage};
-use crate::utils::{get_today_title, get_week_dates, slugify};
+use crate::store::{use_store, Page};
+use crate::utils::{get_today_title, get_week_dates};
+
+/// Props for the Sidebar component
+#[derive(Props, Clone, PartialEq)]
+pub struct SidebarProps {
+    on_close: EventHandler<()>,
+}
 
 /// Sidebar component with file explorer, favorites, and daily notes
 #[component]
-pub fn Sidebar(on_close: EventHandler<()>) -> Element {
+pub fn Sidebar(props: SidebarProps) -> Element {
     let store = use_store();
-    let storage = use_storage();
     
     let new_page_title = use_signal(|| String::new());
-    let expanded_folders = use_signal(|| std::collections::HashSet::<String>::new());
     let sidebar_section = use_signal(|| "pages".to_string());
 
     // Get pages sorted alphabetically
-    let pages = store.get_pages_sorted();
+    let pages = store.read().get_pages_sorted();
     
     // Get recent pages
-    let recent_pages = store.get_recent_pages(5);
+    let recent_pages = store.read().get_recent_pages(5);
     
     // Get favorite pages
-    let favorite_pages = store.get_favorite_pages();
+    let favorite_pages = store.read().get_favorite_pages();
     
     // Get pages by tag
     let all_tags = {
-        let mut tags: Vec<_> = store.pages.values()
+        let tags: Vec<_> = store.read().pages.values()
             .flat_map(|p| p.tags.clone())
             .collect();
+        let mut tags = tags.into_iter().collect::<std::collections::HashSet<_>>().into_iter().collect::<Vec<_>>();
         tags.sort();
-        tags.dedup();
         tags
     };
+
+    let store_clone = store.clone();
 
     rsx! {
         div { class: "flex flex-col w-64 min-w-[250px] max-w-[400px] bg-white dark:bg-obsidian-900 border-r border-obsidian-200 dark:border-obsidian-800 transition-colors duration-200",
@@ -40,7 +45,7 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                 span { class: "text-sm font-semibold text-obsidian-700 dark:text-obsidian-300", "Explorer" },
                 button {
                     class: "p-1 rounded hover:bg-obsidian-100 dark:hover:bg-obsidian-800 transition-colors",
-                    onclick: move |_| on_close.emit(()),
+                    onclick: move |_| props.on_close.call(()),
                     svg { class: "w-4 h-4 text-obsidian-500", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24",
                         path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M6 18L18 6M6 6l12 12" }
                     }
@@ -53,9 +58,10 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                     class: "w-full flex items-center gap-2 px-3 py-2 text-sm bg-logseq-blue text-white rounded-lg hover:bg-blue-600 transition-colors",
                     onclick: move |_| {
                         let today = get_today_title();
-                        if !store.pages.values().any(|p| p.title == today) {
-                            let page_id = store.create_page(&today);
-                            if let Some(page) = store.pages.get_mut(&page_id) {
+                        let has_today = store.read().pages.values().any(|p| p.title == today);
+                        if !has_today {
+                            store_clone.write().create_page(&today);
+                            if let Some(page) = store_clone.write().pages.get_mut(&today) {
                                 page.icon = Some("📅".to_string());
                             }
                         }
@@ -76,9 +82,9 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                         value: "{new_page_title}",
                         oninput: move |e| new_page_title.set(e.value().clone()),
                         onkeydown: move |e| {
-                            if e.key() == "Enter" && !new_page_title.trim().is_empty() {
-                                let title = new_page_title.trim().to_string();
-                                let page_id = store.create_page(&title);
+                            if e.key() == "Enter" && !new_page_title.read().trim().is_empty() {
+                                let title = new_page_title.read().trim().to_string();
+                                store_clone.write().create_page(&title);
                                 new_page_title.set(String::new());
                             }
                         }
@@ -86,9 +92,9 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                     button {
                         class: "px-3 py-1.5 bg-obsidian-100 dark:bg-obsidian-800 rounded-lg hover:bg-obsidian-200 dark:hover:bg-obsidian-700 transition-colors",
                         onclick: move |_| {
-                            if !new_page_title.trim().is_empty() {
-                                let title = new_page_title.trim().to_string();
-                                let page_id = store.create_page(&title);
+                            if !new_page_title.read().trim().is_empty() {
+                                let title = new_page_title.read().trim().to_string();
+                                store_clone.write().create_page(&title);
                                 new_page_title.set(String::new());
                             }
                         },
@@ -146,7 +152,7 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                             div { class: "px-3 py-2",
                                 div { class: "text-xs font-semibold text-obsidian-500 dark:text-obsidian-500 uppercase tracking-wider mb-1", "Recent" },
                                 for page in recent_pages {
-                                    PageItem { page: page.clone(), on_toggle_favorite: |_| store.toggle_favorite(&page.id) }
+                                    PageItem { page: page.clone(), on_toggle_favorite: move |_| store_clone.write().toggle_favorite(&page.id) }
                                 }
                             }
                         },
@@ -158,7 +164,7 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                                 div { class: "text-sm text-obsidian-400 dark:text-obsidian-600 py-2", "No pages yet" }
                             } else {
                                 for page in pages {
-                                    PageItem { page: page.clone(), on_toggle_favorite: |_| store.toggle_favorite(&page.id) }
+                                    PageItem { page: page.clone(), on_toggle_favorite: move |_| store_clone.write().toggle_favorite(&page.id) }
                                 }
                             }
                         }
@@ -171,7 +177,7 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                                 }
                             } else {
                                 for page in favorite_pages {
-                                    PageItem { page: page.clone(), on_toggle_favorite: |_| store.toggle_favorite(&page.id) }
+                                    PageItem { page: page.clone(), on_toggle_favorite: move |_| store_clone.write().toggle_favorite(&page.id) }
                                 }
                             }
                         }
@@ -184,9 +190,7 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                                 }
                             } else {
                                 for tag in all_tags {
-                                    TagItem { tag: tag.clone(), on_click: move |_| {
-                                        // Filter pages by tag
-                                    }}
+                                    TagItem { tag: tag.clone(), on_click: move |_| {} }
                                 }
                             }
                         }
@@ -200,6 +204,7 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                 div { class: "text-xs font-semibold text-obsidian-500 dark:text-obsidian-500 uppercase tracking-wider mb-2", "Daily Notes" },
                 div { class: "grid grid-cols-7 gap-1",
                     for (date, label) in get_week_dates() {
+                        let store_clone2 = store_clone.clone();
                         button {
                             class: format!("px-1 py-1 text-xs rounded transition-colors {}",
                                 if date == get_today_title() {
@@ -209,8 +214,9 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
                                 }
                             ),
                             onclick: move |_| {
-                                if !store.pages.values().any(|p| p.title == date) {
-                                    store.create_page(&date);
+                                let has_date = store_clone2.read().pages.values().any(|p| p.title == date);
+                                if !has_date {
+                                    store_clone2.write().create_page(&date);
                                 }
                             },
                             span { class: "block text-[10px] opacity-70", "{label.split(' ').next().unwrap_or(\"\")}" }
@@ -223,12 +229,19 @@ pub fn Sidebar(on_close: EventHandler<()>) -> Element {
     }
 }
 
+/// Props for PageItem component
+#[derive(Props, Clone, PartialEq)]
+pub struct PageItemProps {
+    page: Page,
+    on_toggle_favorite: EventHandler<()>,
+}
+
 /// Individual page item component
 #[component]
-pub fn PageItem(page: Page, on_toggle_favorite: EventHandler<()>) -> Element {
+pub fn PageItem(props: PageItemProps) -> Element {
     let store = use_store();
-    let is_active = store.current_page_id.as_ref() == Some(&page.id);
-    let is_favorite = store.is_favorite(&page.id);
+    let is_active = store.read().current_page_id.as_ref() == Some(&props.page.id);
+    let is_favorite = store.read().is_favorite(&props.page.id);
 
     rsx! {
         div {
@@ -240,7 +253,7 @@ pub fn PageItem(page: Page, on_toggle_favorite: EventHandler<()>) -> Element {
                 }
             ),
             onclick: move |_| {
-                store.set_current_page(Some(page.id.clone()));
+                store.write().set_current_page(Some(props.page.id.clone()));
             },
 
             // Favorite button
@@ -248,7 +261,7 @@ pub fn PageItem(page: Page, on_toggle_favorite: EventHandler<()>) -> Element {
                 class: "p-0.5 rounded hover:bg-obsidian-200 dark:hover:bg-obsidian-700 transition-colors",
                 onclick: move |e| {
                     e.stop_propagation();
-                    on_toggle_favorite.emit(());
+                    props.on_toggle_favorite.call(());
                 },
                 svg {
                     class: format!("w-3.5 h-3.5 {}",
@@ -264,7 +277,7 @@ pub fn PageItem(page: Page, on_toggle_favorite: EventHandler<()>) -> Element {
             },
 
             // Page icon
-            if let Some(icon) = &page.icon {
+            if let Some(icon) = &props.page.icon {
                 span { class: "text-sm", "{icon}" }
             },
 
@@ -277,23 +290,30 @@ pub fn PageItem(page: Page, on_toggle_favorite: EventHandler<()>) -> Element {
                         "text-obsidian-700 dark:text-obsidian-300"
                     }
                 ),
-                "{page.title}"
+                "{props.page.title}"
             }
         }
     }
 }
 
+/// Props for TagItem component
+#[derive(Props, Clone, PartialEq)]
+pub struct TagItemProps {
+    tag: String,
+    on_click: EventHandler<()>,
+}
+
 /// Tag item component
 #[component]
-pub fn TagItem(tag: String, on_click: EventHandler<()>) -> Element {
+pub fn TagItem(props: TagItemProps) -> Element {
     rsx! {
         button {
             class: "flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-obsidian-50 dark:hover:bg-obsidian-900 transition-colors w-full text-left",
-            onclick: move |_| on_click.emit(()),
+            onclick: move |_| props.on_click.call(()),
             svg { class: "w-4 h-4 text-purple-500", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24",
                 path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" }
             },
-            span { class: "text-sm text-obsidian-700 dark:text-obsidian-300", "{tag}" }
+            span { class: "text-sm text-obsidian-700 dark:text-obsidian-300", "{props.tag}" }
         }
     }
 }

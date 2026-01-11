@@ -1,7 +1,9 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::store::{AppState, Page, Block, Theme};
+use std::rc::Rc;
+use std::cell::RefCell;
+use crate::store::{Page, Block, Theme};
 
 /// Storage key prefixes
 const PREFIX_PAGES: &str = "dioxus_brain_pages_";
@@ -92,31 +94,61 @@ impl Into<Block> for StoredBlock {
     }
 }
 
-/// Storage manager for persisting and loading app data
+/// Storage manager using Rc<RefCell> for shared mutable state
 #[derive(Debug, Clone)]
 pub struct StorageManager {
-    /// Pages stored in memory
-    pages: Signal<HashMap<String, Page>>,
-    /// Blocks stored in memory
-    blocks: Signal<HashMap<String, Block>>,
-    /// Favorites list
-    favorites: Signal<Vec<String>>,
-    /// Theme preference
-    theme: Signal<Theme>,
-    /// Whether data has been loaded
-    loaded: Signal<bool>,
+    pages: Rc<RefCell<HashMap<String, Page>>>,
+    blocks: Rc<RefCell<HashMap<String, Block>>>,
+    favorites: Rc<RefCell<Vec<String>>>,
+    theme: Rc<RefCell<Theme>>,
+    loaded: Rc<RefCell<bool>>,
 }
 
 impl StorageManager {
     /// Create a new storage manager
     pub fn new() -> Self {
         Self {
-            pages: Signal::new(HashMap::new()),
-            blocks: Signal::new(HashMap::new()),
-            favorites: Signal::new(Vec::new()),
-            theme: Signal::new(Theme::Light),
-            loaded: Signal::new(false),
+            pages: Rc::new(RefCell::new(HashMap::new())),
+            blocks: Rc::new(RefCell::new(HashMap::new())),
+            favorites: Rc::new(RefCell::new(Vec::new())),
+            theme: Rc::new(RefCell::new(Theme::Light)),
+            loaded: Rc::new(RefCell::new(false)),
         }
+    }
+
+    /// Get pages reference
+    pub fn pages(&self) -> std::cell::Ref<'_, HashMap<String, Page>> {
+        self.pages.borrow()
+    }
+
+    /// Get pages mutable reference
+    pub fn pages_mut(&self) -> std::cell::RefMut<'_, HashMap<String, Page>> {
+        self.pages.borrow_mut()
+    }
+
+    /// Get blocks reference
+    pub fn blocks(&self) -> std::cell::Ref<'_, HashMap<String, Block>> {
+        self.blocks.borrow()
+    }
+
+    /// Get blocks mutable reference
+    pub fn blocks_mut(&self) -> std::cell::RefMut<'_, HashMap<String, Block>> {
+        self.blocks.borrow_mut()
+    }
+
+    /// Get favorites reference
+    pub fn favorites(&self) -> std::cell::Ref<'_, Vec<String>> {
+        self.favorites.borrow()
+    }
+
+    /// Get theme reference
+    pub fn theme(&self) -> std::cell::Ref<'_, Theme> {
+        self.theme.borrow()
+    }
+
+    /// Get loaded flag
+    pub fn is_loaded(&self) -> bool {
+        *self.loaded.borrow()
     }
 
     /// Save a page to storage
@@ -162,14 +194,14 @@ impl StorageManager {
     }
 
     /// Save all state
-    pub fn save_state(&self, state: &AppState) {
+    pub fn save_state(&self, favorites: &[String], theme: &Theme) {
         // Save favorites
-        if let Ok(json) = serde_json::to_string(&state.favorites) {
+        if let Ok(json) = serde_json::to_string(favorites) {
             self.set_storage(PREFIX_FAVORITES, &json);
         }
 
         // Save theme
-        let theme_str = match state.theme {
+        let theme_str = match theme {
             Theme::Light => "light",
             Theme::Dark => "dark",
             Theme::System => "system",
@@ -197,13 +229,13 @@ impl StorageManager {
 
     /// Export all data as JSON
     pub fn export_all(&self) -> String {
-        let pages: Vec<StoredPage> = self.pages.read()
+        let pages: Vec<StoredPage> = self.pages.borrow()
             .values()
             .cloned()
             .map(|p| p.into())
             .collect();
 
-        let blocks: Vec<StoredBlock> = self.blocks.read()
+        let blocks: Vec<StoredBlock> = self.blocks.borrow()
             .values()
             .cloned()
             .map(|b| b.into())
@@ -225,7 +257,7 @@ impl StorageManager {
             for page_value in pages_array {
                 if let Ok(stored) = serde_json::from_value::<StoredPage>(page_value.clone()) {
                     let page: Page = stored.into();
-                    self.pages.write().insert(page.id.clone(), page.clone());
+                    self.pages.borrow_mut().insert(page.id.clone(), page.clone());
                     self.save_page(&page);
                 }
             }
@@ -236,7 +268,7 @@ impl StorageManager {
             for block_value in blocks_array {
                 if let Ok(stored) = serde_json::from_value::<StoredBlock>(block_value.clone()) {
                     let block: Block = stored.into();
-                    self.blocks.write().insert(block.id.clone(), block.clone());
+                    self.blocks.borrow_mut().insert(block.id.clone(), block.clone());
                     self.save_block(&block);
                 }
             }
@@ -309,8 +341,7 @@ impl StorageManager {
 pub fn use_storage() -> StorageManager {
     use_context::<StorageManager>().unwrap_or_else(|| {
         let manager = StorageManager::new();
-        #[cfg(feature = "web")]
-        dioxus::prelude::provide_context(manager.clone());
+        provide_context(manager.clone());
         manager
     })
 }
@@ -318,13 +349,14 @@ pub fn use_storage() -> StorageManager {
 /// Provider component for storage manager
 #[component]
 pub fn StorageProvider(children: Element) -> Element {
-    let storage = use(|| StorageManager::new());
+    let storage = use_hook(|| StorageManager::new());
 
     // Load initial state
     use_effect(move || {
         let (favorites, theme) = storage.load_state();
-        *storage.favorites.write() = favorites;
-        *storage.theme.write() = theme;
+        *storage.favorites.borrow_mut() = favorites;
+        *storage.theme.borrow_mut() = theme;
+        *storage.loaded.borrow_mut() = true;
 
         // Apply theme
         if let Some(window) = web_sys::window() {
@@ -334,6 +366,8 @@ pub fn StorageProvider(children: Element) -> Element {
             }
         }
     });
+
+    provide_context(storage);
 
     rsx! {
         { children }

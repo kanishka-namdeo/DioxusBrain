@@ -15,8 +15,9 @@ fn main() {
     // Set up better panic messages for debugging
     console_error_panic_hook::set_once();
     
-    dioxus::web::launch(
-        move |cx| {
+    // Launch the app with Dioxus 0.7
+    dioxus_web::launch(
+        move |_| {
             rsx! {
                 StorageProvider {
                     App {}

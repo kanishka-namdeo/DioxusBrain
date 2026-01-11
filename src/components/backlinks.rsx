@@ -1,22 +1,29 @@
 use dioxus::prelude::*;
 use crate::store::{use_store, Backlink};
 
+/// Props for BacklinksPanel component
+#[derive(Props, Clone, PartialEq)]
+pub struct BacklinksPanelProps {
+    on_close: EventHandler<()>,
+}
+
 /// Backlinks panel component showing incoming links to the current page
 #[component]
-pub fn BacklinksPanel(on_close: EventHandler<()>) -> Element {
+pub fn BacklinksPanel(props: BacklinksPanelProps) -> Element {
     let store = use_store();
     
     // Get backlinks for current page
     let backlinks = {
-        let page_id = store.current_page_id.clone();
+        let page_id = store.read().current_page_id.clone();
         page_id.and_then(|id| {
-            let links = store.get_backlinks(&id);
+            let links = store.read().get_backlinks(&id);
             Some(links)
         }).unwrap_or_default()
     };
 
     // Get current page for display
-    let current_page = store.get_current_page();
+    let current_page = store.read().get_current_page().cloned();
+    let store_clone = store.clone();
 
     rsx! {
         div { class: "flex flex-col w-72 min-w-[280px] max-w-[400px] bg-white dark:bg-obsidian-900 border-l border-obsidian-200 dark:border-obsidian-800 transition-colors duration-200",
@@ -31,7 +38,7 @@ pub fn BacklinksPanel(on_close: EventHandler<()>) -> Element {
                 },
                 button {
                     class: "p-1 rounded hover:bg-obsidian-100 dark:hover:bg-obsidian-800 transition-colors",
-                    onclick: move |_| on_close.emit(()),
+                    onclick: move |_| props.on_close.call(()),
                     svg { class: "w-4 h-4 text-obsidian-500", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24",
                         path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M6 18L18 6M6 6l12 12" }
                     }
@@ -39,7 +46,7 @@ pub fn BacklinksPanel(on_close: EventHandler<()>) -> Element {
             },
 
             // Page info
-            if let Some(page) = current_page {
+            if let Some(page) = &current_page {
                 div { class: "px-4 py-2 border-b border-obsidian-200 dark:border-obsidian-800 bg-obsidian-50 dark:bg-obsidian-900/50",
                     div { class: "text-xs text-obsidian-500 dark:text-obsidian-500 mb-1", "Links to this page" },
                     div { class: "flex items-center gap-2",
@@ -75,15 +82,15 @@ pub fn BacklinksPanel(on_close: EventHandler<()>) -> Element {
                         }
 
                         for (page_title, links) in grouped {
+                            let store_clone2 = store_clone.clone();
                             div { class: "mb-3",
                                 // Page header
                                 button {
                                     class: "w-full px-4 py-2 text-left hover:bg-obsidian-50 dark:hover:bg-obsidian-800/50 transition-colors",
                                     onclick: move |_| {
-                                        // Find and navigate to the page
-                                        if let Some((page_id, _)) = store.pages.iter()
+                                        if let Some((page_id, _)) = store_clone2.read().pages.iter()
                                             .find(|(_, p)| p.title == page_title) {
-                                            store.set_current_page(Some(page_id.clone()));
+                                            store_clone2.write().set_current_page(Some(page_id.clone()));
                                         }
                                     },
                                     div { class: "flex items-center gap-2",
@@ -120,22 +127,30 @@ pub fn BacklinksPanel(on_close: EventHandler<()>) -> Element {
     }
 }
 
+/// Props for OutlinksPanel component
+#[derive(Props, Clone, PartialEq)]
+pub struct OutlinksPanelProps {
+    on_close: EventHandler<()>,
+}
+
 /// Outlinks panel (optional, shows outgoing links from current page)
 #[component]
-pub fn OutlinksPanel(on_close: EventHandler<()>) -> Element {
+pub fn OutlinksPanel(props: OutlinksPanelProps) -> Element {
     let store = use_store();
     
-    let current_page = store.get_current_page();
+    let current_page = store.read().get_current_page();
     let outlinks: Vec<String> = current_page
         .and_then(|page| {
             Some(
                 page.blocks.iter()
-                    .filter_map(|block_id| store.blocks.get(block_id))
+                    .filter_map(|block_id| store.read().blocks.get(block_id))
                     .flat_map(|block| crate::graph::KnowledgeGraph::extract_wikilinks(&block.content))
                     .collect()
             )
         })
         .unwrap_or_default();
+
+    let store_clone = store.clone();
 
     rsx! {
         div { class: "flex flex-col w-72 bg-white dark:bg-obsidian-900 border-l border-obsidian-200 dark:border-obsidian-800",
@@ -145,7 +160,7 @@ pub fn OutlinksPanel(on_close: EventHandler<()>) -> Element {
                 span { class: "text-sm font-semibold text-obsidian-700 dark:text-obsidian-300", "Outlinks" },
                 button {
                     class: "p-1 rounded hover:bg-obsidian-100 dark:hover:bg-obsidian-800",
-                    onclick: move |_| on_close.emit(()),
+                    onclick: move |_| props.on_close.call(()),
                     svg { class: "w-4 h-4 text-obsidian-500", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24",
                         path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M6 18L18 6M6 6l12 12" }
                     }
@@ -161,17 +176,17 @@ pub fn OutlinksPanel(on_close: EventHandler<()>) -> Element {
                 } else {
                     div { class: "space-y-1 px-2",
                         for link in outlinks {
+                            let store_clone2 = store_clone.clone();
+                            let link_clone = link.clone();
                             button {
                                 class: "w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-obsidian-50 dark:hover:bg-obsidian-800 transition-colors text-left",
                                 onclick: move |_| {
-                                    // Find and navigate to the linked page
-                                    if let Some((page_id, _)) = store.pages.iter()
-                                        .find(|(_, p)| p.title.to_lowercase() == link.to_lowercase()) {
-                                        store.set_current_page(Some(page_id.clone()));
+                                    if let Some((page_id, _)) = store_clone2.read().pages.iter()
+                                        .find(|(_, p)| p.title.to_lowercase() == link_clone.to_lowercase()) {
+                                        store_clone2.write().set_current_page(Some(page_id.clone()));
                                     } else {
-                                        // Create new page if it doesn't exist
-                                        let new_id = store.create_page(&link);
-                                        store.set_current_page(Some(new_id));
+                                        let new_id = store_clone2.write().create_page(&link_clone);
+                                        store_clone2.write().set_current_page(Some(new_id));
                                     }
                                 },
                                 svg { class: "w-4 h-4 text-obsidian-400", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24",

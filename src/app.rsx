@@ -1,14 +1,14 @@
 use dioxus::prelude::*;
 use crate::store::{use_store, AppState, Theme};
 use crate::components::{Sidebar, Editor, BacklinksPanel, GraphView, CommandPalette};
-use crate::storage::{StorageManager};
+use crate::storage::{StorageManager, use_storage};
 
 /// Main App component with three-panel layout
 #[component]
 pub fn App() -> Element {
     // Global state management
     let store = use_store();
-    let storage = use_context::<StorageManager>();
+    let _storage = use_storage();
 
     // Command palette state
     let show_command_palette = use_signal(|| false);
@@ -25,25 +25,19 @@ pub fn App() -> Element {
                     }
                     "p" => {
                         event.prevent_default();
-                        // Quick switch to page search
                         show_command_palette.set(true);
                     }
                     "\\" => {
                         event.prevent_default();
-                        // Toggle sidebar
-                        let current = store.left_sidebar_open;
-                        store.set_left_sidebar_open(!current);
+                        store.set_left_sidebar_open(!store.left_sidebar_open);
                     }
                     "|" => {
                         event.prevent_default();
-                        // Toggle right sidebar
-                        let current = store.right_sidebar_open;
-                        store.set_right_sidebar_open(!current);
+                        store.set_right_sidebar_open(!store.right_sidebar_open);
                     }
                     _ => {}
                 }
             }
-            // Escape to close command palette
             if event.key() == "Escape" {
                 show_command_palette.set(false);
             }
@@ -53,7 +47,6 @@ pub fn App() -> Element {
         let document = window.document().unwrap();
         let listener = document.add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
         
-        // Cleanup
         move || {
             if let Ok(listener) = listener {
                 let _ = document.remove_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
@@ -61,11 +54,12 @@ pub fn App() -> Element {
         }
     });
 
+    let is_dark = store.theme == Theme::Dark;
+
     rsx! {
         div {
             class: "h-screen w-screen flex flex-col bg-obsidian-50 dark:bg-obsidian-950 text-obsidian-900 dark:text-obsidian-100 transition-colors duration-200",
-            // Theme class on html element
-            class: if store.theme == Theme::Dark { "dark" } else { "" },
+            class: if is_dark { "dark" } else { "" },
 
             // Header / Top bar
             header {
@@ -159,10 +153,10 @@ pub fn App() -> Element {
                             fill: "none",
                             stroke: "currentColor",
                             viewBox: "0 0 24 24",
-                            if store.theme == Theme::Light {
-                                path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" }
-                            } else {
+                            if is_dark {
                                 path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" }
+                            } else {
+                                path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" }
                             }
                         }
                     },

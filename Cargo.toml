@@ -6,13 +6,14 @@ description = "A knowledge management tool inspired by Logseq and Obsidian"
 authors = ["DioxusBrain Team"]
 
 [dependencies]
-# Dioxus Core
-dioxus = "0.5.0"
-dioxus-core = "0.5.0"
-dioxus-hooks = "0.5.0"
-dioxus-router = "0.5.0"
+# Dioxus 0.7 - Modern Rust-based UI framework
+dioxus = "0.7"
+dioxus-core = "0.7"
+dioxus-hooks = "0.7"
+dioxus-router = "0.7"
+dioxus-html = "0.7"
 
-# Web interop
+# Web interop for browser APIs
 wasm-bindgen = "0.2"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
@@ -26,6 +27,8 @@ web-sys = { version = "0.3", features = [
     "Storage",
     "FileReader",
     "Blob",
+    "HtmlInputElement",
+    "Text",
 ] }
 
 # Storage
@@ -43,9 +46,6 @@ regex = "1.5"
 # Time/Date
 chrono = { version = "0.4", features = ["serde"] }
 
-# Icons
-include_fonts = "0.5"
-
 # Debug utilities
 console_error_panic_hook = "0.1"
 
@@ -62,5 +62,4 @@ web = []
 desktop = ["dioxus/desktop"]
 
 [package.metadata.dioxus]
-# For desktop support, use: dioxus build --features desktop --platform windows/macos/linux
 default_platform = "web"

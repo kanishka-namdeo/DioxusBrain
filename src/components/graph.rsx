@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use crate::store::{use_store};
-use crate::graph::{KnowledgeGraph, GraphLayout, GraphStats};
+use crate::graph::{KnowledgeGraph, GraphLayout};
 
 /// Graph view component showing the knowledge graph visualization
 #[component]
@@ -10,7 +10,7 @@ pub fn GraphView() -> Element {
     // Build graph from current state
     let graph = use_memo(move || {
         let mut kg = KnowledgeGraph::default();
-        kg.build_from_state(&store.pages, &store.blocks, store.current_page_id.as_ref());
+        kg.build_from_state(&store.read().pages, &store.read().blocks, store.read().current_page_id.as_ref());
         kg
     });
 
@@ -31,6 +31,10 @@ pub fn GraphView() -> Element {
     // Filter options
     let show_isolated = use_signal(|| true);
     let min_links = use_signal(|| 0);
+
+    let store_clone = store.clone();
+    let graph_clone = graph.clone();
+    let layout_clone = layout.clone();
 
     rsx! {
         div { class: "flex-1 flex flex-col overflow-hidden bg-obsidian-50 dark:bg-obsidian-950 transition-colors duration-200",
@@ -116,17 +120,6 @@ pub fn GraphView() -> Element {
 
                         // Definitions for gradients and filters
                         defs {
-                            // Gradient for links
-                            linearGradient {
-                                id: "link-gradient",
-                                x1: "0%",
-                                y1: "0%",
-                                x2: "100%",
-                                y2: "0%",
-                                stop { offset: "0%", stop_color: "#9fa3b0", stop_opacity: "0.4" }
-                                stop { offset: "100%", stop_color: "#5c5f72", stop_opacity: "0.4" }
-                            },
-
                             // Glow filter
                             filter {
                                 id: "glow",
@@ -174,20 +167,23 @@ pub fn GraphView() -> Element {
                             }
 
                             if let Some(pos) = layout.get(node_id) {
-                                let is_selected = selected_node.as_ref().map(|s| s == node_id).unwrap_or(false);
-                                let is_active = store.current_page_id.as_ref() == Some(node_id);
+                                let is_selected = selected_node.read().as_ref().map(|s| s == node_id).unwrap_or(false);
+                                let is_active = store.read().current_page_id.as_ref() == Some(node_id);
+                                let node_id_clone = node_id.clone();
+                                let store_clone2 = store_clone.clone();
+                                let pos_clone = pos.clone();
 
                                 g {
                                     class: "graph-node",
                                     onclick: move |_| {
-                                        selected_node.set(Some(node_id.clone()));
-                                        store.set_current_page(Some(node_id.clone()));
+                                        selected_node.set(Some(node_id_clone.clone()));
+                                        store_clone2.write().set_current_page(Some(node_id_clone.clone()));
                                     },
 
                                     // Node circle
                                     circle {
-                                        cx: "{pos.0}",
-                                        cy: "{pos.1}",
+                                        cx: "{pos_clone.0}",
+                                        cy: "{pos_clone.1}",
                                         r: if is_active { 20.0 } else if node.link_count > 5 { 16.0 } else if node.link_count > 0 { 12.0 } else { 8.0 },
                                         fill: if is_active {
                                             "#2962ff"
@@ -213,8 +209,8 @@ pub fn GraphView() -> Element {
                                     // Node icon (if available)
                                     if let Some(icon) = &node.icon {
                                         text {
-                                            x: "{pos.0}",
-                                            y: "{pos.1 + 5}",
+                                            x: "{pos_clone.0}",
+                                            y: "{pos_clone.1 + 5}",
                                             text_anchor: "middle",
                                             font_size: "14",
                                             class: "pointer-events-none select-none",
@@ -224,8 +220,8 @@ pub fn GraphView() -> Element {
 
                                     // Node label
                                     text {
-                                        x: "{pos.0}",
-                                        y: if node.icon.is_some() { pos.1 + 28.0 } else { pos.1 + 20.0 },
+                                        x: "{pos_clone.0}",
+                                        y: if node.icon.is_some() { pos_clone.1 + 28.0 } else { pos_clone.1 + 20.0 },
                                         text_anchor: "middle",
                                         font_size: "11",
                                         fill: "#5c5f72",
@@ -239,9 +235,10 @@ pub fn GraphView() -> Element {
                 },
 
                 // Side panel with selected node info
-                if let Some(node_id) = selected_node.as_ref() {
+                if let Some(node_id) = selected_node.read().as_ref() {
                     div { class: "w-64 bg-white dark:bg-obsidian-900 border-l border-obsidian-200 dark:border-obsidian-800 p-4 overflow-y-auto",
                         if let Some(node) = graph.nodes.get(node_id) {
+                            let node_id_clone = node_id.clone();
                             div { class: "space-y-4",
 
                                 // Node title
@@ -276,15 +273,13 @@ pub fn GraphView() -> Element {
                                     button {
                                         class: "flex-1 px-3 py-2 bg-logseq-blue text-white text-sm rounded-lg hover:bg-blue-600 transition-colors",
                                         onclick: move |_| {
-                                            store.set_current_page(Some(node_id.clone()));
+                                            store_clone.write().set_current_page(Some(node_id_clone.clone()));
                                         },
                                         "Open Page"
                                     },
                                     button {
                                         class: "px-3 py-2 bg-obsidian-100 dark:bg-obsidian-800 text-obsidian-700 dark:text-obsidian-300 text-sm rounded-lg hover:bg-obsidian-200 dark:hover:bg-obsidian-700 transition-colors",
-                                        onclick: move |_| {
-                                            // TODO: Add to favorites
-                                        },
+                                        onclick: move |_| {},
                                         "Favorite"
                                     }
                                 }
